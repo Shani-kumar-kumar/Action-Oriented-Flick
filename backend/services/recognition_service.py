@@ -43,6 +43,7 @@ class RecognitionService:
         self._total_confidence = 0.0
         self._session_started_at = None
         self._last_prediction = None
+        self._last_detected_label = None
 
         # MediaPipe Hands initialized with model_complexity=0 (Lite) for low-end CPU optimization
         self._mp_hands = mp.solutions.hands
@@ -109,10 +110,14 @@ class RecognitionService:
             prediction = self._predict_frame(frame)
             self._last_prediction = prediction
 
-            if prediction["detected"]:
-                self._history.appendleft(prediction)
-                self._total_detected += 1
-                self._total_confidence += prediction["confidence"]
+            if prediction["detected"] and prediction["gesture"] != "Waiting":
+                if prediction["gesture"] != self._last_detected_label:
+                    self._last_detected_label = prediction["gesture"]
+                    self._history.appendleft(prediction)
+                    self._total_detected += 1
+                    self._total_confidence += prediction["confidence"]
+            else:
+                self._last_detected_label = None
 
             return prediction
 
@@ -140,6 +145,7 @@ class RecognitionService:
             self._total_detected = 0
             self._total_confidence = 0.0
             self._last_prediction = None
+            self._last_detected_label = None
             self._session_started_at = datetime.now(timezone.utc) if self._running else None
             return self.stats()
 

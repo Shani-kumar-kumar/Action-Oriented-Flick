@@ -22,7 +22,7 @@ The application uses a static responsive frontend for webcam capture and user in
 - Interactive gesture data management CLI (`manage_data.py`, `list_gestures.py`, `delete_gestures.py`)
 - Automated one-step capture and training pipeline (`train_pipeline.py` & `train_gesture.bat`)
 - One-click server launcher (`run.bat`)
-- Text-to-speech conversion
+- Automatic single-execution speech synthesis with Voice ON/OFF toggle and multi-country voice selector (Indian Male & Female, US, UK, Australia, and regional system voices with speech speed control)
 - Recognition history and statistics dashboard
 - Responsive frontend with custom favicon and modern UI
 - REST API backend with automated unit and integration tests
@@ -245,8 +245,8 @@ The Flask server starts at `127.0.0.1:5000`, serves `frontend/index.html`, and e
 2. Click `Start Recognition`.
 3. Allow webcam permission when the browser prompts you.
 4. Keep one or both hands visible in the webcam preview within the detection area.
-5. Watch the current gesture, confidence score, detected hand count, and recognized text update in the recognition panel.
-6. Use `Text-to-Speech` to speak the generated sentence.
+5. Watch the current gesture, confidence score, detected hand count, and recognized text update immediately.
+6. Automatic speech output speaks each recognized gesture once (toggle Voice ON/OFF anytime with the Voice button, or click Speak Sentence to replay the whole sentence).
 7. Review recent predictions in the recognition history table.
 8. Monitor session totals and average confidence in the statistics dashboard.
 9. Click `Stop Recognition` to stop the session and release the browser camera stream.

@@ -628,9 +628,106 @@ h3 {
   font-weight: 600;
 }
 
+.voice-settings-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.voice-setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 240px;
+}
+
+.voice-setting-item.voice-rate-item {
+  flex: 0 1 160px;
+}
+
+.voice-setting-label {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.voice-select {
+  height: 42px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.voice-select:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(15, 143, 140, 0.18);
+}
+
+.voice-select optgroup {
+  font-weight: 800;
+  color: var(--teal-dark);
+  background: var(--surface);
+}
+
+.voice-select option {
+  font-weight: 500;
+  color: var(--ink);
+  padding: 4px;
+}
+
+.voice-slider {
+  accent-color: var(--teal);
+  cursor: pointer;
+  height: 24px;
+}
+
 .speech-actions {
   justify-content: space-between;
   margin-top: 18px;
+}
+
+.speech-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.voice-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.voice-toggle-btn.voice-on {
+  border-color: rgba(15, 143, 140, 0.45);
+  background: rgba(15, 143, 140, 0.1);
+  color: var(--teal-dark);
+}
+
+.voice-toggle-btn.voice-off {
+  border-color: rgba(189, 62, 62, 0.4);
+  background: rgba(189, 62, 62, 0.08);
+  color: var(--danger);
 }
 
 .audio-status {

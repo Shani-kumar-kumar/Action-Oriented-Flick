@@ -19,6 +19,12 @@ const state = {
   totalConfidence: 0,
   cameraAvailable: false,
   apiMode: recognitionApi.mode,
+  voiceEnabled: true,      // On/off toggle for automatic voice sound
+  lastSpokenGesture: "",   // Debounce: tracks the last gesture that was spoken and added
+  noHandCount: 0,          // Tracks consecutive cycles with no detected hand
+  selectedVoice: null,
+  selectedVoiceURI: localStorage.getItem("preferred_voice") || "",
+  voiceRate: parseFloat(localStorage.getItem("preferred_voice_rate") || "1.0"),
 };
 
 const elements = {
@@ -35,6 +41,15 @@ const elements = {
   stopBtn: document.getElementById("stopBtn"),
   clearBtn: document.getElementById("clearBtn"),
   speakBtn: document.getElementById("speakBtn"),
+  voiceToggleBtn: document.getElementById("voiceToggleBtn"),
+  voiceToggleText: document.getElementById("voiceToggleText"),
+  voiceToggleIcon: document.getElementById("voiceToggleIcon"),
+  speechVoiceToggleBtn: document.getElementById("speechVoiceToggleBtn"),
+  speechVoiceToggleText: document.getElementById("speechVoiceToggleText"),
+  speechVoiceToggleIcon: document.getElementById("speechVoiceToggleIcon"),
+  voiceSelect: document.getElementById("voiceSelect"),
+  voiceSpeedRange: document.getElementById("voiceSpeedRange"),
+  voiceSpeedVal: document.getElementById("voiceSpeedVal"),
   gestureLabel: document.getElementById("gestureLabel"),
   confidenceScore: document.getElementById("confidenceScore"),
   confidenceBar: document.getElementById("confidenceBar"),
@@ -328,26 +343,50 @@ async function runPredictionCycle() {
 function appendPrediction(prediction) {
   state.apiMode = prediction.source === "backend" ? "backend" : state.apiMode;
 
-  if (prediction.detected && prediction.text) {
-    const event = {
-      ...prediction,
-      time: new Date(),
-    };
-
-    state.history.unshift(event);
-    state.history = state.history.slice(0, MAX_HISTORY_ITEMS);
-    state.totalDetected += 1;
-    state.totalConfidence += prediction.confidence;
-    state.sentence.push(prediction.text);
-  }
-
+  // Step 1: Immediately show the recognized text & metrics corresponding to current gesture of hand
   setText(elements.gestureLabel, prediction.gesture);
   setText(elements.confidenceScore, `${prediction.confidence}%`);
   elements.confidenceBar.style.width = `${prediction.confidence}%`;
-  setText(elements.recognizedText, prediction.text || prediction.message || "Waiting for a confident gesture.");
   updateHandsIndicators(prediction.numHands);
 
-  renderSentence();
+  if (prediction.detected && prediction.text) {
+    setText(elements.recognizedText, prediction.text);
+    state.noHandCount = 0;
+
+    // Step 2: One-time execution: only one time gesture, one time speech of one meaning
+    if (prediction.text !== state.lastSpokenGesture) {
+      state.lastSpokenGesture = prediction.text;
+
+      const event = {
+        ...prediction,
+        time: new Date(),
+      };
+
+      state.history.unshift(event);
+      state.history = state.history.slice(0, MAX_HISTORY_ITEMS);
+      state.totalDetected += 1;
+      state.totalConfidence += prediction.confidence;
+      state.sentence.push(prediction.text);
+
+      renderSentence();
+      renderStats();
+      renderHistory();
+
+      // Step 3: Automatic speech starts only once per detected gesture
+      if (state.voiceEnabled) {
+        speakGesture(prediction.text);
+      }
+    }
+  } else {
+    setText(elements.recognizedText, prediction.text || prediction.message || "Waiting for a confident gesture.");
+    state.noHandCount += 1;
+
+    // When hand is removed or no gesture detected for 2 consecutive cycles,
+    // reset lastSpokenGesture so the user can perform the same gesture again
+    if (state.noHandCount >= 2) {
+      state.lastSpokenGesture = "";
+    }
+  }
 }
 
 function renderSentence() {
@@ -423,11 +462,16 @@ function applyStats(stats) {
 function applyHistory(history) {
   if (!Array.isArray(history)) return;
   state.history = history.slice(0, MAX_HISTORY_ITEMS).map(parseHistoryItem);
-  state.sentence = state.history
+  const words = [];
+  state.history
     .slice()
     .reverse()
-    .map((item) => item.text)
-    .filter(Boolean);
+    .forEach((item) => {
+      if (item.text && words[words.length - 1] !== item.text) {
+        words.push(item.text);
+      }
+    });
+  state.sentence = words;
   renderSentence();
   renderHistory();
 }
@@ -450,11 +494,221 @@ function updateSessionDuration() {
   setText(elements.sessionDuration, `${minutes}:${seconds}`);
 }
 
+function updateVoiceToggleUI() {
+  const isEnabled = state.voiceEnabled;
+  const icon = isEnabled ? "🔊" : "🔇";
+  const label = isEnabled ? "Voice: ON" : "Voice: OFF";
+  const stateClass = isEnabled ? "voice-on" : "voice-off";
+  const removeClass = isEnabled ? "voice-off" : "voice-on";
+
+  [elements.voiceToggleBtn, elements.speechVoiceToggleBtn].forEach((btn) => {
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", String(isEnabled));
+    btn.classList.add(stateClass);
+    btn.classList.remove(removeClass);
+    btn.title = isEnabled ? "Click to mute voice sound (Voice OFF)" : "Click to unmute voice sound (Voice ON)";
+  });
+
+  if (elements.voiceToggleIcon) elements.voiceToggleIcon.textContent = icon;
+  if (elements.voiceToggleText) elements.voiceToggleText.textContent = label;
+  if (elements.speechVoiceToggleIcon) elements.speechVoiceToggleIcon.textContent = icon;
+  if (elements.speechVoiceToggleText) elements.speechVoiceToggleText.textContent = label;
+
+  if (!isEnabled) {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setStatusDot(elements.audioStatus, "Voice Muted (Off)", "muted");
+  } else {
+    setStatusDot(elements.audioStatus, "Audio idle", "muted");
+  }
+}
+
+function toggleVoice() {
+  state.voiceEnabled = !state.voiceEnabled;
+  updateVoiceToggleUI();
+}
+
+function guessGender(name) {
+  const lower = name.toLowerCase();
+  if (
+    lower.includes("female") ||
+    lower.includes("woman") ||
+    lower.includes("girl") ||
+    lower.includes("heera") ||
+    lower.includes("zira") ||
+    lower.includes("hazel") ||
+    lower.includes("susan") ||
+    lower.includes("jenny") ||
+    lower.includes("neerja") ||
+    lower.includes("swara") ||
+    lower.includes("aditi") ||
+    lower.includes("veena") ||
+    lower.includes("kalpana") ||
+    lower.includes("priya") ||
+    lower.includes("ananya") ||
+    lower.includes("pooja")
+  ) {
+    return "Female";
+  }
+  if (
+    lower.includes("male") ||
+    lower.includes("man") ||
+    lower.includes("boy") ||
+    lower.includes("ravi") ||
+    lower.includes("david") ||
+    lower.includes("george") ||
+    lower.includes("mark") ||
+    lower.includes("guy") ||
+    lower.includes("madhur") ||
+    lower.includes("prabhat") ||
+    lower.includes("amit") ||
+    lower.includes("raj")
+  ) {
+    return "Male";
+  }
+  return "";
+}
+
+function getRegionGroup(voice) {
+  const lang = (voice.lang || "").toLowerCase();
+  const name = voice.name.toLowerCase();
+
+  if (
+    lang.includes("-in") ||
+    lang === "hi" ||
+    lang.startsWith("hi-") ||
+    lang.startsWith("ta-") ||
+    lang.startsWith("te-") ||
+    lang.startsWith("bn-") ||
+    lang.startsWith("mr-") ||
+    lang.startsWith("gu-") ||
+    name.includes("india") ||
+    name.includes("hindi")
+  ) {
+    return "india";
+  }
+  if (lang.includes("-us") || name.includes("united states") || name.includes("us english")) {
+    return "us";
+  }
+  if (lang.includes("-gb") || lang.includes("-uk") || name.includes("united kingdom") || name.includes("uk english")) {
+    return "uk";
+  }
+  if (lang.includes("-au") || name.includes("australia")) {
+    return "au";
+  }
+  if (lang.includes("-ca") || name.includes("canada")) {
+    return "ca";
+  }
+  return "other";
+}
+
+function populateVoiceList() {
+  if (!("speechSynthesis" in window) || !elements.voiceSelect) return;
+
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return;
+
+  const groups = {
+    india: { label: "🇮🇳 Indian Voices (Male & Female)", voices: [] },
+    us: { label: "🇺🇸 United States (US)", voices: [] },
+    uk: { label: "🇬🇧 United Kingdom (UK)", voices: [] },
+    au: { label: "🇦🇺 Australia", voices: [] },
+    ca: { label: "🇨🇦 Canada", voices: [] },
+    other: { label: "🌐 Other Country Voices", voices: [] },
+  };
+
+  voices.forEach((voice) => {
+    const region = getRegionGroup(voice);
+    groups[region].voices.push(voice);
+  });
+
+  elements.voiceSelect.replaceChildren();
+
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "— Default System Voice —";
+  elements.voiceSelect.appendChild(defaultOption);
+
+  let matchFound = false;
+
+  Object.values(groups).forEach((grp) => {
+    if (!grp.voices.length) return;
+
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = grp.label;
+
+    grp.voices.forEach((voice) => {
+      const option = document.createElement("option");
+      const uri = voice.voiceURI || voice.name;
+      option.value = uri;
+
+      const gender = guessGender(voice.name);
+      const genderLabel = gender ? ` [${gender}]` : "";
+      option.textContent = `${voice.name} (${voice.lang})${genderLabel}`;
+
+      if (state.selectedVoiceURI && uri === state.selectedVoiceURI) {
+        option.selected = true;
+        state.selectedVoice = voice;
+        matchFound = true;
+      }
+
+      optgroup.appendChild(option);
+    });
+
+    elements.voiceSelect.appendChild(optgroup);
+  });
+
+  if (!matchFound && !state.selectedVoiceURI) {
+    if (groups.india.voices.length > 0) {
+      const preferred = groups.india.voices[0];
+      state.selectedVoice = preferred;
+      state.selectedVoiceURI = preferred.voiceURI || preferred.name;
+      elements.voiceSelect.value = state.selectedVoiceURI;
+    }
+  } else if (matchFound && state.selectedVoiceURI) {
+    elements.voiceSelect.value = state.selectedVoiceURI;
+  }
+}
+
+function speakGesture(text) {
+  if (!state.voiceEnabled || !text) return;
+
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    if (state.selectedVoice) {
+      utterance.voice = state.selectedVoice;
+    }
+    utterance.rate = state.voiceRate || 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onstart = () => {
+      setStatusDot(elements.audioStatus, `Speaking: "${text}"`);
+    };
+    utterance.onend = () => {
+      setStatusDot(elements.audioStatus, state.voiceEnabled ? "Audio idle" : "Voice Muted (Off)", "muted");
+    };
+    utterance.onerror = (err) => {
+      if (err.error !== "canceled" && err.error !== "interrupted") {
+        console.warn("Speech error:", err);
+      }
+      setStatusDot(elements.audioStatus, state.voiceEnabled ? "Audio idle" : "Voice Muted (Off)", "muted");
+    };
+
+    window.speechSynthesis.speak(utterance);
+  } else {
+    setStatusDot(elements.audioStatus, "Speech API unavailable", "error");
+  }
+}
+
 async function clearText() {
   state.history = [];
   state.sentence = [];
   state.totalDetected = 0;
   state.totalConfidence = 0;
+  state.lastSpokenGesture = "";
+  state.noHandCount = 0;
 
   setText(elements.gestureLabel, "Waiting");
   setText(elements.confidenceScore, "0%");
@@ -468,7 +722,7 @@ async function clearText() {
   if ("speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
-  setStatusDot(elements.audioStatus, "Audio idle", "muted");
+  setStatusDot(elements.audioStatus, state.voiceEnabled ? "Audio idle" : "Voice Muted (Off)", "muted");
 
   try {
     await recognitionApi.clear();
@@ -491,36 +745,41 @@ async function speakGeneratedSentence() {
   }
 
   elements.speakBtn.disabled = true;
-  setStatusDot(elements.audioStatus, "Preparing speech");
 
-  try {
-    const speechResult = await recognitionApi.speak(text);
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    if (state.selectedVoice) {
+      utterance.voice = state.selectedVoice;
+    }
+    utterance.rate = state.voiceRate || 1.0;
+    utterance.pitch = 1.0;
 
-    setStatusDot(elements.audioStatus, speechResult.status === "queued" ? "Speech queued" : "Speech sent");
+    utterance.onstart = () => setStatusDot(elements.audioStatus, "Speaking");
+    utterance.onend = () => {
+      setStatusDot(elements.audioStatus, state.voiceEnabled ? "Audio idle" : "Voice Muted (Off)", "muted");
+      elements.speakBtn.disabled = false;
+    };
+    utterance.onerror = (err) => {
+      if (err.error !== "canceled" && err.error !== "interrupted") {
+        console.warn("Speech error:", err);
+      }
+      setStatusDot(elements.audioStatus, state.voiceEnabled ? "Audio idle" : "Voice Muted (Off)", "muted");
+      elements.speakBtn.disabled = false;
+    };
 
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-
-      utterance.onstart = () => setStatusDot(elements.audioStatus, "Speaking");
-      utterance.onend = () => {
-        setStatusDot(elements.audioStatus, "Audio idle", "muted");
-        elements.speakBtn.disabled = false;
-      };
-      utterance.onerror = () => {
-        setStatusDot(elements.audioStatus, "Speech failed", "error");
-        elements.speakBtn.disabled = false;
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } else {
-      setStatusDot(elements.audioStatus, "Speech API unavailable", "error");
+    window.speechSynthesis.speak(utterance);
+  } else {
+    try {
+      setStatusDot(elements.audioStatus, "Preparing speech");
+      const speechResult = await recognitionApi.speak(text);
+      setStatusDot(elements.audioStatus, speechResult.status === "queued" ? "Speech queued" : "Speech sent");
+    } catch (error) {
+      console.error(error);
+      setStatusDot(elements.audioStatus, "Speech failed", "error");
+    } finally {
       elements.speakBtn.disabled = false;
     }
-  } catch (error) {
-    console.error(error);
-    setStatusDot(elements.audioStatus, "Speech failed", "error");
-    elements.speakBtn.disabled = false;
   }
 }
 
@@ -529,6 +788,42 @@ function bindEvents() {
   elements.stopBtn.addEventListener("click", stopRecognition);
   elements.clearBtn.addEventListener("click", clearText);
   elements.speakBtn.addEventListener("click", speakGeneratedSentence);
+  if (elements.voiceToggleBtn) {
+    elements.voiceToggleBtn.addEventListener("click", toggleVoice);
+  }
+  if (elements.speechVoiceToggleBtn) {
+    elements.speechVoiceToggleBtn.addEventListener("click", toggleVoice);
+  }
+
+  if (elements.voiceSelect) {
+    elements.voiceSelect.addEventListener("change", (e) => {
+      const uri = e.target.value;
+      state.selectedVoiceURI = uri;
+      localStorage.setItem("preferred_voice", uri);
+      if ("speechSynthesis" in window) {
+        const voices = window.speechSynthesis.getVoices();
+        state.selectedVoice = voices.find((v) => (v.voiceURI || v.name) === uri) || null;
+      }
+      if (state.voiceEnabled) {
+        speakGesture("Voice changed");
+      }
+    });
+  }
+
+  if (elements.voiceSpeedRange) {
+    elements.voiceSpeedRange.value = String(state.voiceRate);
+    if (elements.voiceSpeedVal) {
+      elements.voiceSpeedVal.textContent = `${state.voiceRate.toFixed(1)}x`;
+    }
+    elements.voiceSpeedRange.addEventListener("input", (e) => {
+      const rate = parseFloat(e.target.value);
+      state.voiceRate = rate;
+      localStorage.setItem("preferred_voice_rate", String(rate));
+      if (elements.voiceSpeedVal) {
+        elements.voiceSpeedVal.textContent = `${rate.toFixed(1)}x`;
+      }
+    });
+  }
 }
 
 async function initBackendStatus() {
@@ -543,6 +838,13 @@ async function initApp() {
   initNavigation();
   initRevealAnimations();
   bindEvents();
+  updateVoiceToggleUI();
+
+  if ("speechSynthesis" in window) {
+    populateVoiceList();
+    window.speechSynthesis.onvoiceschanged = populateVoiceList;
+  }
+
   renderSentence();
   renderStats();
   renderHistory();

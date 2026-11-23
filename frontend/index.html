@@ -17,7 +17,7 @@
 <body>
   <header class="site-header" id="top">
     <nav class="navbar" aria-label="Primary navigation">
-      <a class="brand" href="#top" aria-label="Action Oriented Flick">
+      <a class="brand" href="#top" aria-label="Action Oriented Flick - Sign Language Recognition System">
         <span class="brand-mark" aria-hidden="true">SL</span>
         <span>SignVision AI</span>
       </a>
@@ -124,6 +124,10 @@
             <button class="btn btn-primary" type="button" id="startBtn">Start Recognition</button>
             <button class="btn btn-danger" type="button" id="stopBtn" disabled>Stop Recognition</button>
             <button class="btn btn-secondary" type="button" id="clearBtn">Clear Text</button>
+            <button class="btn btn-secondary voice-toggle-btn voice-on" type="button" id="voiceToggleBtn" aria-pressed="true" title="Turn voice sound on or off">
+              <span id="voiceToggleIcon" aria-hidden="true">🔊</span>
+              <span id="voiceToggleText">Voice: ON</span>
+            </button>
           </div>
         </article>
 
@@ -166,8 +170,28 @@
           <div class="sentence-box is-empty" id="sentenceBox" aria-live="polite">
             Your generated sentence will appear here.
           </div>
+
+          <div class="voice-settings-bar">
+            <div class="voice-setting-item">
+              <label for="voiceSelect" class="voice-setting-label">Voice / Country Accent:</label>
+              <select id="voiceSelect" class="voice-select" aria-label="Select Voice Accent">
+                <option value="">Loading voices...</option>
+              </select>
+            </div>
+            <div class="voice-setting-item voice-rate-item">
+              <label for="voiceSpeedRange" class="voice-setting-label">Speed: <span id="voiceSpeedVal">1.0x</span></label>
+              <input type="range" id="voiceSpeedRange" min="0.7" max="1.4" step="0.1" value="1.0" class="voice-slider" />
+            </div>
+          </div>
+
           <div class="speech-actions">
-            <button class="btn btn-primary" type="button" id="speakBtn" disabled>Text-to-Speech</button>
+            <div class="speech-btn-group">
+              <button class="btn btn-primary" type="button" id="speakBtn" disabled>Speak Sentence</button>
+              <button class="btn btn-secondary voice-toggle-btn voice-on" type="button" id="speechVoiceToggleBtn" aria-pressed="true" title="Turn voice sound on or off">
+                <span id="speechVoiceToggleIcon" aria-hidden="true">🔊</span>
+                <span id="speechVoiceToggleText">Voice: ON</span>
+              </button>
+            </div>
             <span class="audio-status" id="audioStatus" role="status" aria-live="polite">
               <span class="status-dot muted"></span>
               Audio idle
